@@ -4,7 +4,9 @@
 
 Thread::Thread(QTcpSocket *tcpServerConnection) : tcpServerConnection(tcpServerConnection)
 {
-
+    totalBytes = 0;
+    inBlock.resize(0);
+    outBlock.resize(0);
 }
 
 Thread::~Thread()
@@ -23,16 +25,29 @@ void Thread::run()
 
 void Thread::readyRead()
 {
-    QDataStream in(tcpServerConnection);
-    in.setVersion(QDataStream::Qt_5_5);
-    int type;
-    in >> type;
-    switch (type) {
-    case 1:
-       checkLogin(in);
-        break;
-    default:
-        break;
+    if(!tcpServerConnection->bytesAvailable())
+        return;
+    if(totalBytes == 0)
+    {
+        QDataStream in(tcpServerConnection);
+        in.setVersion(QDataStream::Qt_5_5);
+        in >> totalBytes;
+    }
+    inBlock.append(tcpServerConnection->readAll());
+    if(inBlock.size() == totalBytes)
+    {
+        QDataStream in(&inBlock, QIODevice::ReadWrite);
+        totalBytes = 0;
+        int type;
+        in >> type;
+        switch (type) {
+        case 1:
+            checkLogin(in);
+            break;
+        default:
+            break;
+        }
+        inBlock.resize(0);
     }
 }
 
@@ -43,28 +58,34 @@ void Thread::checkLogin(QDataStream &in)
     query.addBindValue(username);
     query.addBindValue(password);
     query.exec();
-    QDataStream out(&block, QIODevice::ReadWrite);
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
     out.setVersion(QDataStream::Qt_5_5);
     if(!query.next())
     {
         username.clear();
-        out << false << 0;
+        out << qint64(0) << false << 0;
+        out.device()->seek(0);
+        out << (qint64)(outBlock.size() - sizeof(qint64));
     }
     else if(query.value(7).toBool() == true)
     {
         username.clear();
-        out << false << 1;
+        out << qint64(0) << false << 1;
+        out.device()->seek(0);
+        out << (qint64)(outBlock.size() - sizeof(qint64));
     }
     else
     {
-        out << true << query.value(0).toInt() << query.value(3).toString() << query.value(4).toInt()
+        out << qint64(0) << true << query.value(0).toInt() << query.value(3).toString() << query.value(4).toInt()
             << query.value(5).toInt() << query.value(6).toInt();
+        out.device()->seek(0);
+        out << (qint64)(outBlock.size() - sizeof(qint64));
         query.prepare("update user set isonline=1 where username=?");
         query.addBindValue(username);
         query.exec();
     }
-    tcpServerConnection->write(block);
-    block.resize(0);
+    tcpServerConnection->write(outBlock);
+    outBlock.resize(0);
 }
 
 void Thread::displayError()

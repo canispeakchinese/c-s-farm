@@ -25,8 +25,9 @@ protected slots:
 private:
     QTcpSocket * tcpServerConnection;
     QSqlQuery query;
-    QByteArray block;
+    QByteArray inBlock, outBlock;
     QString username, password;
+    qint64 totalBytes;
 };
 
 #endif // THREAD_H
