@@ -53,17 +53,19 @@ void Thread::readyRead()
         }
         switch (messageType) {
         case 1:
-            checkLogin(in);
+            checkLogin(in);          //登录
             break;
         case 2:
-            sendFriend();
+            sendFriend();            //获取好友信息
             break;
         case 3:
-            sendSoils();
+            sendSoils();             //获取土地信息
             break;
         case 4:
-            sendGoods(in);
+            sendGoods(in);           //获取物品信息
             break;
+        case 5:
+            sendBusinessResult(in);   //根据客户端发送的交易请求返回交易结果
         default:
             break;
         }
@@ -134,8 +136,7 @@ void Thread::sendFriend()
             << query.value(3).toInt() << query.value(4).toInt();
     }
     out.device()->seek(0);
-    out << (qint64)outBlock.size();
-    out << 2 << temp.size();
+    out << (qint64)outBlock.size() << 2 << temp.size();
     tcpServerConnection->write(outBlock);
 }
 
@@ -182,7 +183,7 @@ void Thread::sendGoods(QDataStream &in)
     QByteArray outBlock;
     QDataStream out(&outBlock, QIODevice::ReadWrite);
     out.setVersion(QDataStream::Qt_5_5);
-    out << qint64(0) << 4 << 0;
+    out << qint64(0) << 4 << 0 << 0;//长度，类型，business，条数
     int business, goodNum = 0;
     in >> business;
     if(business == Buy)
@@ -193,7 +194,7 @@ void Thread::sendGoods(QDataStream &in)
         query.exec("select id, buyprice, sellprice from plant");
         while(query.next())
         {
-            out << Seed << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
+            out << (int)Seed << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
             goodNum++;
         }
     }
@@ -214,8 +215,103 @@ void Thread::sendGoods(QDataStream &in)
         while(query.next())
         {
             out << query.value(0).toInt() << query.value(1).toInt();
+            goodNum++;
         }
     }
+    out.device()->seek(0);
+    out << (qint64)outBlock.size() << 4 << business << goodNum;
+    tcpServerConnection->write(outBlock);
+}
+
+void Thread::sendBusinessResult(QDataStream &in)
+{
+    QByteArray outBlock;
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
+    out.setVersion(QDataStream::Qt_5_5);
+    int business, type, kind, businessNum;
+    in >> business >> type >> kind >> businessNum;
+    out << qint64(0) << 5 << 0 << business;//长度，类型，结果, business
+    if(businessNum <= 0)
+    {
+        out.device()->seek(0);
+        out << (qint64)outBlock.size();
+        tcpServerConnection->write(outBlock);
+        return;
+    }
+    if(business == Buy)
+    {
+        query.prepare("select buyprice from plant where id = ? and kind = ?");
+        query.addBindValue(type);
+        query.addBindValue(kind);
+        query.exec();
+        if(!query.next())
+        {
+            out.device()->seek(0);
+            out << (qint64)outBlock.size() << 5 << 1;
+            tcpServerConnection->write(outBlock);
+            return;
+        }
+        int buyprice = query.value(0).toInt();
+        query.exec(QString("select money from user where id = %1").arg(id));
+        int money = query.value(0).toInt();
+        if(money < buyprice * businessNum)
+        {
+            out.device()->seek(0);
+            out << (qint64)outBlock.size() << 5 << 2;
+            tcpServerConnection->write(outBlock);
+            return;
+        }
+        money -= buyprice * businessNum;
+        query.exec(QString("update user set money = %1 where id =%2").arg(money).arg(id));
+        query.prepare("update store set num = num + ? where id = ? and type = ? and kind = ?");
+    }
+    else if(business == Sell || business == Use)
+    {
+        query.prepare("select num from store where id = ? and type = ? and kind = ?");
+        query.addBindValue(id);
+        query.addBindValue(type);
+        query.addBindValue(kind);
+        query.exec();
+        if(!query.next())
+        {
+            out.device()->seek(0);
+            out << (qint64)outBlock.size() << 5 << 1;
+            tcpServerConnection->write(outBlock);
+            return;
+        }
+        int currentNum = query.value(0).toInt();
+        if(currentNum < businessNum)
+        {
+            out.device()->seek(0);
+            out << (qint64)outBlock.size() << 5 << 2;
+            tcpServerConnection->write(outBlock);
+            return;
+        }
+        if(business == Sell)
+        {
+            int businessPrice;
+            if(type == Seed)
+            {
+                query.exec(QString("select buyprice from plant where id = %1").arg(kind));
+                businessPrice = query.value(0).toInt() * 0.8;
+            }
+            else if(type == Fruit)
+            {
+                query.exec(QString("select sellprice from plant where id = %1").arg(kind));
+                businessPrice = query.value(0).toInt();
+            }
+            query.exec(QString("update user set money = money + %1 where id = %2").arg(businessPrice * businessNum).arg(id));
+        }
+        query.prepare("update store set num = num - ? where id = ? and type = ? and kind = ?");
+    }
+    query.addBindValue(businessNum);
+    query.addBindValue(id);
+    query.addBindValue(type);
+    query.addBindValue(kind);
+    query.exec();
+    out.device()->seek(0);
+    out << (qint64)outBlock.size() << 5 << 3;
+    tcpServerConnection->write(outBlock);
 }
 
 void Thread::displayError()

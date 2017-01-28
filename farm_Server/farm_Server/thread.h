@@ -22,6 +22,7 @@ public:
     void sendFriend();
     void sendSoils();
     void sendGoods(QDataStream &in);
+    void sendBusinessResult(QDataStream &in);
     ~Thread();
 
 protected:
