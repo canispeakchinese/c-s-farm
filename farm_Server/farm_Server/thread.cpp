@@ -230,7 +230,7 @@ void Thread::sendBusinessResult(QDataStream &in)
     out.setVersion(QDataStream::Qt_5_5);
     int business, type, kind, businessNum;
     in >> business >> type >> kind >> businessNum;
-    out << qint64(0) << 5 << 0 << business;//长度，类型，结果, business
+    out << qint64(0) << 5 << 0;//长度，类型，结果, business
     if(businessNum <= 0)
     {
         out.device()->seek(0);
@@ -240,10 +240,12 @@ void Thread::sendBusinessResult(QDataStream &in)
     }
     if(business == Buy)
     {
-        query.prepare("select buyprice from plant where id = ? and kind = ?");
-        query.addBindValue(type);
-        query.addBindValue(kind);
-        query.exec();
+        if(type == Seed)
+        {
+            query.prepare("select buyprice from plant where id = ?");
+            query.addBindValue(kind);
+            query.exec();
+        }
         if(!query.next())
         {
             out.device()->seek(0);
@@ -253,6 +255,7 @@ void Thread::sendBusinessResult(QDataStream &in)
         }
         int buyprice = query.value(0).toInt();
         query.exec(QString("select money from user where id = %1").arg(id));
+        query.next();
         int money = query.value(0).toInt();
         if(money < buyprice * businessNum)
         {
@@ -263,7 +266,16 @@ void Thread::sendBusinessResult(QDataStream &in)
         }
         money -= buyprice * businessNum;
         query.exec(QString("update user set money = %1 where id =%2").arg(money).arg(id));
-        query.prepare("update store set num = num + ? where id = ? and type = ? and kind = ?");
+        query.prepare("select * from store where id = ? and type = ? and kind =?");
+        query.addBindValue(id);
+        query.addBindValue(type);
+        query.addBindValue(kind);
+        query.exec();
+        if(query.next())
+            query.prepare("update store set num = num + ? where id = ? and type = ? and kind = ?");
+        else
+            query.prepare("insert into store(num, id, type, kind) values(?, ?, ?, ?)");
+        query.addBindValue(businessNum);
     }
     else if(business == Sell || business == Use)
     {
@@ -289,22 +301,29 @@ void Thread::sendBusinessResult(QDataStream &in)
         }
         if(business == Sell)
         {
-            int businessPrice;
+            int businessPrice = 0;
             if(type == Seed)
             {
                 query.exec(QString("select buyprice from plant where id = %1").arg(kind));
+                query.next();
                 businessPrice = query.value(0).toInt() * 0.8;
             }
             else if(type == Fruit)
             {
                 query.exec(QString("select sellprice from plant where id = %1").arg(kind));
+                query.next();
                 businessPrice = query.value(0).toInt();
             }
             query.exec(QString("update user set money = money + %1 where id = %2").arg(businessPrice * businessNum).arg(id));
         }
-        query.prepare("update store set num = num - ? where id = ? and type = ? and kind = ?");
+        if(currentNum == businessNum)
+            query.prepare("delete from store where id = ? and type = ? and kind = ?");
+        else
+        {
+            query.prepare("update store set num = num - ? where id = ? and type = ? and kind = ?");
+            query.addBindValue(businessNum);
+        }
     }
-    query.addBindValue(businessNum);
     query.addBindValue(id);
     query.addBindValue(type);
     query.addBindValue(kind);
