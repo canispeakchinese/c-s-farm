@@ -255,30 +255,28 @@ QByteArray Thread::getGoodResult(Business business)
         query.exec(QString("select money from user where id = %1").arg(id));
         query.next();
         out << query.value(0).toInt();
-        query.exec("select id, buyprice, sellprice from plant");
+        query.exec("select id from plant");
         while(query.next())
         {
-            out << (int)Seed << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
+            out << (int)Seed << query.value(0).toInt();
             goodNum++;
         }
     }
     else if(business == Sell)
     {
-        query.exec(QString("select type, kind, buyprice, sellprice, num from store, plant where store.id=%1 ").arg(id)
-            +QString("and (type=%1 or type=%2) and store.kind=plant.id").arg(Seed).arg(Fruit));
+        query.exec(QString("select type, kind, num from store where id=%1").arg(id));
         while(query.next())
         {
-            out << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt() << query.value(3).toInt()
-                << query.value(4).toInt();
+            out << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
             goodNum++;
         }
     }
     else if(business == Use)
     {
-        query.exec(QString("select kind, num from store where id=%1 and type=%2").arg(id).arg(Seed));
+        query.exec(QString("select type, kind, num from store where id=%1 and type=%2").arg(id).arg(Seed));
         while(query.next())
         {
-            out << query.value(0).toInt() << query.value(1).toInt();
+            out << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
             goodNum++;
         }
     }
@@ -480,10 +478,8 @@ void Thread::sendHarvestResult(QDataStream &in)
     //int level = query.value(3).toInt();
     QDateTime cal_time = query.value(4).toDateTime();
     int yield = query.value(5).toInt();
-    query.exec(QString("select buyprice, sellprice, growTime, allSta from plant where id = %1").arg(kind));
+    query.exec(QString("select growTime, allSta from plant where id = %1").arg(kind));
     query.next();
-    int buyprice = query.value(0).toInt();
-    int sellprice = query.value(1).toInt();
     int growTime = query.value(2).toInt();
     int allSta = query.value(3).toInt();
     if(cal_time.secsTo(QDateTime::currentDateTime()) < (qint64)growTime * allSta * 3600)
@@ -501,7 +497,7 @@ void Thread::sendHarvestResult(QDataStream &in)
     }
     else
         query.exec(QString("insert into store values(%1, %2, %3, %4)").arg(id).arg(kind).arg(yield).arg(Fruit));
-    out << 2 << kind << buyprice << sellprice << yield;
+    out << 2 << kind << yield;
     out.device()->seek(0);
     out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
