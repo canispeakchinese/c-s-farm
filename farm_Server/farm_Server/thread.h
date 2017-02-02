@@ -19,10 +19,15 @@ class Thread : public QThread
 public:
     Thread(QTcpSocket * tcpServerConnection);
     void checkLogin(QDataStream &in);
-    void sendFriend();
-    void sendSoils();
-    void sendGoods(QDataStream &in);
+    void checkSign(QDataStream &in);
+    void sendUpdateResult(QDataStream &in);
+    QByteArray getSoilResult();
+    QByteArray getFriendResult();
+    QByteArray getGoodResult(Business business);
     void sendBusinessResult(QDataStream &in);
+    void sendPlantResult(QDataStream &in);
+    void sendSpadResult(QDataStream &in);
+    void sendHarvestResult(QDataStream &in);
     ~Thread();
 
 protected:
