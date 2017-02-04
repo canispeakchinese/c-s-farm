@@ -3,12 +3,18 @@
 #include <QDataStream>
 #include <QVector>
 #include <QDateTime>
+#include <time.h>
+
+const int duration = 3600;
+const int interval = 3600 * 5;
+const int randTime = 3600;
 
 Thread::Thread(QTcpSocket *tcpServerConnection) : tcpServerConnection(tcpServerConnection)
 {
     id = -1;
     totalBytes = 0;
     inBlock.resize(0);
+    srand(time(NULL));
 }
 
 Thread::~Thread()
@@ -72,6 +78,10 @@ void Thread::readyRead()
             break;
         case 7:
             sendHarvestResult(in);
+            break;
+        case 8:
+            sendStatusChangeResult(in);
+            break;
         default:
             break;
         }
@@ -80,6 +90,35 @@ void Thread::readyRead()
         if(inBlock.size() >= (int)(sizeof(qint64) + sizeof(int)))
             readyRead();
     }
+}
+
+int Thread::yieldChange(int number, const QDateTime aimTime, QDateTime &water, QDateTime &pyre, QDateTime &weed)
+{
+    QSqlQuery query;
+    query.exec(QString("select yield from soil where id = %1 and number = %2").arg(id).arg(number));
+    query.next();
+    int yield = query.value(0).toInt();
+    while(water != QDateTime(QDate(1900,1,1), QTime(0, 0)) && water.addSecs(duration) <= aimTime)
+        water = water.addSecs(duration + interval + rand()%randTime);
+    while(pyre != QDateTime(QDate(1900,1,1), QTime(0, 0)) && pyre.addSecs(duration) <= aimTime)
+    {
+        yield--;
+        pyre = pyre.addSecs(duration + interval + rand()%randTime);
+    }
+    while(weed != QDateTime(QDate(1900,1,1), QTime(0, 0)) && weed.addSecs(duration) <= aimTime)
+        weed = weed.addSecs(duration + interval +rand()%randTime);
+    if(yield < 0)
+        yield = 0;
+    QString aim = QString("update soil set yield = %1").arg(yield);
+    if(water != QDateTime(QDate(1900,1,1), QTime(0, 0)))
+        aim += QString(", water = '%1'").arg(water.toString("yyyy-MM-dd hh:mm:ss"));
+    if(pyre != QDateTime(QDate(1900,1,1), QTime(0, 0)))
+        aim += QString(", pyre = '%1'").arg(pyre.toString("yyyy-MM-dd hh:mm:ss"));
+    if(weed != QDateTime(QDate(1900,1,1), QTime(0, 0)))
+        aim += QString(", weed = '%1'").arg(weed.toString("yyyy-MM-dd hh:mm:ss"));
+    aim += QString(" where id = %1 and number = %2").arg(id).arg(number);
+    query.exec(aim);
+    return yield;
 }
 
 void Thread::checkLogin(QDataStream &in)
@@ -187,11 +226,13 @@ QByteArray Thread::getSoilResult()
     QByteArray outBlock;
     QDataStream out(&outBlock, QIODevice::ReadWrite);
     out.setVersion(QDataStream::Qt_5_5);
-    query.prepare("select level, is_recla, kind, plant_time, cal_time, yield, water, pyre, weed, harvest from soil where id=? order by number");
+    query.prepare("select level, is_recla, kind, cal_time, water, pyre, weed, harvest from soil where id=? order by number");
     query.addBindValue(id);
     query.exec();
+    int number = 0;
     while(query.next())
     {
+        number++;
         out << query.value(0).toInt();
         bool is_recla = query.value(1).toBool();
         out << is_recla;
@@ -201,16 +242,35 @@ QByteArray Thread::getSoilResult()
             out << kind;
             if(kind)
             {
-                for(int i=3; i<5; i++)
-                    out << query.value(i).toDateTime();
-                out << query.value(5).toInt();
-                for(int i=6; i<9; i++)
-                    out << query.value(i).toDateTime();
-                out << query.value(9).toBool();
-                QSqlQuery query2;
-                query2.exec(QString("select growTime, allSta from plant where id=%1").arg(kind));
-                query2.next();
-                out << query2.value(0).toInt() << query2.value(1).toInt();
+                if(query.value(7).toBool())         //已经收获
+                    out << true;
+                else
+                {
+                    out << false;
+                    QSqlQuery query2;
+                    query2.exec(QString("select growTime, allSta from plant where id=%1").arg(kind));
+                    query2.next();
+                    int growTime = query2.value(0).toInt();
+                    int allSta = query2.value(1).toInt();
+                    QDateTime cal_time = query.value(3).toDateTime();
+                    QDateTime water = query.value(4).toDateTime();
+                    QDateTime pyre = query.value(5).toDateTime();
+                    QDateTime weed = query.value(6).toDateTime();
+                    if(cal_time.addSecs(growTime * allSta * 3600) <= QDateTime::currentDateTime())      //已经成熟
+                        out << true << allSta << yieldChange(number, cal_time.addSecs(growTime * allSta * 3600), water, pyre, weed);
+                    else                                                                                //尚未成熟
+                    {
+                        out << false << growTime << allSta;
+                        out << yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
+                        out << growTime * allSta * 3600 - (int)cal_time.secsTo(QDateTime::currentDateTime());
+                        out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
+                                   (int)QDateTime::currentDateTime().secsTo(water) : (duration + (int)QDateTime::currentDateTime().secsTo(water)));
+                        out << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
+                                   (int)QDateTime::currentDateTime().secsTo(pyre) : (duration + (int)QDateTime::currentDateTime().secsTo(pyre)));
+                        out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
+                                   (int)QDateTime::currentDateTime().secsTo(weed) : (duration + (int)QDateTime::currentDateTime().secsTo(weed)));
+                    }
+                }
             }
         }
     }
@@ -421,7 +481,7 @@ void Thread::sendPlantResult(QDataStream &in)
     }
     query.exec(QString("select yield,growTime,allSta from plant where id=%1").arg(kind));
     query.next();
-    int group_time = query.value(1).toInt();
+    int growTime = query.value(1).toInt();
     int allSta = query.value(2).toInt();
     int yield = query.value(0).toInt();
     if(num == 1)
@@ -429,9 +489,12 @@ void Thread::sendPlantResult(QDataStream &in)
     else
         query.exec(QString("update store set num=num-1 where id=%1 and kind=%2 and type=0").arg(id).arg(kind));
     QDateTime plant_time = QDateTime::currentDateTime();
-    query.exec(QString("update soil set kind=%1,yield=%2,plant_time='%3',water='%3',pyre='%3',weed='%3',cal_time='%3',harvest=0 where id=%4 and"
-        " number=%5").arg(kind).arg(yield).arg(plant_time.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
-    out << 2 << group_time << allSta << yield << plant_time;
+    int water = interval + rand()%randTime;
+    int pyre = interval + rand()%randTime;
+    int weed = interval + rand()%randTime;
+    query.exec(QString("update soil set kind=%1,yield=%2,plant_time='%3',cal_time='%3',water='%4',pyre='%5',weed='%6',harvest=0 where id=%7 and"
+        " number=%8").arg(kind).arg(yield).arg(plant_time.toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(water).toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(pyre).toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(weed).toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+    out << 2 << growTime << allSta << yield << water << pyre << weed;
     out.device()->seek(0);
     out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
@@ -469,7 +532,7 @@ void Thread::sendHarvestResult(QDataStream &in)
     int number;
     in >> number;
     query.exec(QString("select is_recla, kind, harvest, level, cal_time, yield from soil where id = %1 and number = %2").arg(id).arg(number));
-    if(!query.next() || query.value(0).toBool() == false || query.value(1).toInt() == 0 || query.value(2).toInt() == 1)
+    if(!query.next() || query.value(0).toBool() == false || query.value(1).toInt() == 0 || query.value(2).toBool() == true)
     {
         tcpServerConnection->write(outBlock);      //土地信息错误
         return;
@@ -480,8 +543,8 @@ void Thread::sendHarvestResult(QDataStream &in)
     int yield = query.value(5).toInt();
     query.exec(QString("select growTime, allSta from plant where id = %1").arg(kind));
     query.next();
-    int growTime = query.value(2).toInt();
-    int allSta = query.value(3).toInt();
+    int growTime = query.value(0).toInt();
+    int allSta = query.value(1).toInt();
     if(cal_time.secsTo(QDateTime::currentDateTime()) < (qint64)growTime * allSta * 3600)
     {
         out << 1;
@@ -489,7 +552,7 @@ void Thread::sendHarvestResult(QDataStream &in)
         return;
     }
     query.exec(QString("update soil set harvest = 1 where id = %1 and number = %2").arg(id).arg(number));
-    query.exec(QString("select * from store where id = %1 and type = %2 and kind = %2").arg(id).arg(Fruit).arg(kind));
+    query.exec(QString("select * from store where id = %1 and type = %2 and kind = %3").arg(id).arg(Fruit).arg(kind));
     if(query.next())
     {
         query.exec(QString("update store set num = num + %1 where id = %2 and type = %3 and kind = %4")
@@ -501,6 +564,167 @@ void Thread::sendHarvestResult(QDataStream &in)
     out.device()->seek(0);
     out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
+}
+
+void Thread::sendStatusChangeResult(QDataStream &in)
+{
+    QByteArray outBlock;
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
+    out.setVersion(QDataStream::Qt_5_5);
+    out << (qint64)0 << 8 << 0;
+    int number, _status;
+    bool _auto;
+    in >> number >> _status >> _auto;
+    query.exec(QString("select kind, cal_time, water, pyre, weed from soil where id = %1 and number = %2").arg(id).arg(number));
+    query.next();
+    int kind = query.value(0).toInt();
+    if(!kind)           //未种植
+    {
+        tcpServerConnection->write(outBlock);
+        return;
+    }
+    else
+    {
+        QSqlQuery query2;
+        query2.exec(QString("select growTime, allSta from plant where id = %1").arg(kind));
+        query2.next();
+        int growTime = query2.value(0).toInt();
+        int allSta = query2.value(1).toInt();
+        if(query.value(1).toDateTime().addSecs(growTime * allSta * 3600) <= QDateTime::currentDateTime())//已成熟
+        {
+            tcpServerConnection->write(outBlock);
+            return;
+        }
+    }
+    QDateTime water = QDateTime(QDate(1900,1,1), QTime(0, 0));
+    QDateTime pyre = QDateTime(QDate(1900,1,1), QTime(0, 0));
+    QDateTime weed = QDateTime(QDate(1900,1,1), QTime(0, 0));
+    if(_status == Water)
+    {
+        water = query.value(2).toDateTime();
+        if(_auto)//自动消失
+        {
+            if(water.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
+                out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(water) : (duration + (int)QDateTime::currentDateTime().secsTo(water)));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+        else//人工浇水
+        {
+            if(water > QDateTime::currentDateTime() || water.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                water = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
+                out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(water) : (duration + (int)QDateTime::currentDateTime().secsTo(water)));
+                query.exec(QString("update soil set yield = yield + 1, water = '%1' where id = %2 and number = %3")
+                           .arg(water.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+    }
+    else if(_status == Pyre)
+    {
+        pyre = query.value(3).toDateTime();
+        if(_auto)//自动消失
+        {
+            if(pyre.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
+                out << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(pyre) : (duration + (int)QDateTime::currentDateTime().secsTo(pyre)));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+        else//人工除虫
+        {
+            if(pyre > QDateTime::currentDateTime() || pyre.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                pyre = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
+                out << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(pyre) : (duration + (int)QDateTime::currentDateTime().secsTo(pyre)));
+                query.exec(QString("update soil set pyre = '%1' where id = %2 and number = %3")
+                           .arg(pyre.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+    }
+    else if(_status == Weed)
+    {
+        weed = query.value(4).toDateTime();
+        if(_auto)//自动消失
+        {
+            if(weed.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
+                out << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(weed) : (duration + (int)QDateTime::currentDateTime().secsTo(weed)));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+        else//人工除草
+        {
+            if(weed > QDateTime::currentDateTime() || weed.addSecs(duration) <= QDateTime::currentDateTime())
+            {
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+            else
+            {
+                weed = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
+                out << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
+                                                                       (int)QDateTime::currentDateTime().secsTo(weed) : (duration + (int)QDateTime::currentDateTime().secsTo(weed)));
+                query.exec(QString("update soil set weed = '%1' where id = %2 and number = %3")
+                           .arg(weed.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+                out.device()->seek(0);
+                out << (qint64)outBlock.size() << 8 << 1;
+                tcpServerConnection->write(outBlock);
+                return;
+            }
+        }
+    }
 }
 
 void Thread::displayError()

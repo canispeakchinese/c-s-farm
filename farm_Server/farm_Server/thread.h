@@ -13,11 +13,16 @@ enum Business {
     Buy, Sell, Use//买,卖,使用
 };
 
+enum ToolType {
+    Spad, Pack, Water, Pyre, Weed, Harv, Alhar, Kit, Plant, Ferti, Empty
+};
+
 class Thread : public QThread
 {
     Q_OBJECT
 public:
     Thread(QTcpSocket * tcpServerConnection);
+    int yieldChange(int number, const QDateTime aimTime, QDateTime &water, QDateTime &pyre, QDateTime &weed);
     void checkLogin(QDataStream &in);
     void checkSign(QDataStream &in);
     void sendUpdateResult(QDataStream &in);
@@ -28,6 +33,7 @@ public:
     void sendPlantResult(QDataStream &in);
     void sendSpadResult(QDataStream &in);
     void sendHarvestResult(QDataStream &in);
+    void sendStatusChangeResult(QDataStream &in);
     ~Thread();
 
 protected:
