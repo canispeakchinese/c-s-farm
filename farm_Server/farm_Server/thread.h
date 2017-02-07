@@ -34,6 +34,7 @@ public:
     void sendSpadResult(QDataStream &in);
     void sendHarvestResult(QDataStream &in);
     void sendStatusChangeResult(QDataStream &in);
+    void sendReclaResult(QDataStream &in);
     ~Thread();
 
 protected:

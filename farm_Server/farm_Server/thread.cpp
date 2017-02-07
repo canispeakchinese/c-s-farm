@@ -8,6 +8,7 @@
 const int duration = 3600;
 const int interval = 3600 * 5;
 const int randTime = 3600;
+const int needExp[11] = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
 
 Thread::Thread(QTcpSocket *tcpServerConnection) : tcpServerConnection(tcpServerConnection)
 {
@@ -81,6 +82,9 @@ void Thread::readyRead()
             break;
         case 8:
             sendStatusChangeResult(in);
+            break;
+        case 9:
+            sendReclaResult(in);
             break;
         default:
             break;
@@ -205,7 +209,7 @@ void Thread::sendUpdateResult(QDataStream &in)
     QByteArray outBlock;
     QDataStream out(&outBlock, QIODevice::ReadWrite);
     out.setVersion(QDataStream::Qt_5_5);
-    out << qint64(0) << 3;
+    out << qint64(0) << 3 << updateResult;
     if(updateResult&1)
         outBlock.append(getSoilResult());
     if(updateResult&2)
@@ -230,6 +234,8 @@ QByteArray Thread::getSoilResult()
     query.addBindValue(id);
     query.exec();
     int number = 0;
+    int reclaNum = 0;
+    out << reclaNum;
     while(query.next())
     {
         number++;
@@ -273,7 +279,11 @@ QByteArray Thread::getSoilResult()
                 }
             }
         }
+        else if(reclaNum == 0)
+            reclaNum = number;
     }
+    out.device()->seek(0);
+    out << reclaNum;
     return outBlock;
 }
 
@@ -364,7 +374,7 @@ void Thread::sendBusinessResult(QDataStream &in)
     {
         if(type == Seed)
         {
-            query.prepare("select buyprice from plant where id = ?");
+            query.prepare("select buyprice, buylevel from plant where id = ?");
             query.addBindValue(kind);
             query.exec();
         }
@@ -376,10 +386,12 @@ void Thread::sendBusinessResult(QDataStream &in)
             return;
         }
         int buyprice = query.value(0).toInt();
-        query.exec(QString("select money from user where id = %1").arg(id));
+        int buylevel = query.value(1).toInt();
+        query.exec(QString("select money, level from user where id = %1").arg(id));
         query.next();
         int money = query.value(0).toInt();
-        if(money < buyprice * businessNum)
+        int level = query.value(1).toInt();
+        if(money < buyprice * businessNum || level < buylevel)
         {
             out.device()->seek(0);
             out << (qint64)outBlock.size() << 5 << 2;
@@ -488,13 +500,13 @@ void Thread::sendPlantResult(QDataStream &in)
         query.exec(QString("delete from store where id=%1 and kind=%2 and type=0").arg(id).arg(kind));
     else
         query.exec(QString("update store set num=num-1 where id=%1 and kind=%2 and type=0").arg(id).arg(kind));
-    QDateTime plant_time = QDateTime::currentDateTime();
+    QDateTime cal_time = QDateTime::currentDateTime();
     int water = interval + rand()%randTime;
     int pyre = interval + rand()%randTime;
     int weed = interval + rand()%randTime;
-    query.exec(QString("update soil set kind=%1,yield=%2,plant_time='%3',cal_time='%3',water='%4',pyre='%5',weed='%6',harvest=0 where id=%7 and"
-        " number=%8").arg(kind).arg(yield).arg(plant_time.toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(water).toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(pyre).toString("yyyy-MM-dd hh:mm:ss")).arg(plant_time.addSecs(weed).toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
-    out << 2 << growTime << allSta << yield << water << pyre << weed;
+    query.exec(QString("update soil set kind=%1,yield=%2,cal_time='%3',water='%4',pyre='%5',weed='%6',harvest=0 where id=%7 and"
+        " number=%8").arg(kind).arg(yield).arg(cal_time.toString("yyyy-MM-dd hh:mm:ss")).arg(cal_time.addSecs(water).toString("yyyy-MM-dd hh:mm:ss")).arg(cal_time.addSecs(pyre).toString("yyyy-MM-dd hh:mm:ss")).arg(cal_time.addSecs(weed).toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+    out << 2 << number << growTime << allSta << yield << water << pyre << weed;
     out.device()->seek(0);
     out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
@@ -517,7 +529,9 @@ void Thread::sendSpadResult(QDataStream &in)
         return;
     }
     query.exec(QString("update soil set kind = 0, harvest = 0 where id = %1 and number = %2").arg(id).arg(number));
-    out << 1;
+    out << 1 << number;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
 }
 
@@ -541,10 +555,11 @@ void Thread::sendHarvestResult(QDataStream &in)
     //int level = query.value(3).toInt();
     QDateTime cal_time = query.value(4).toDateTime();
     int yield = query.value(5).toInt();
-    query.exec(QString("select growTime, allSta from plant where id = %1").arg(kind));
+    query.exec(QString("select growTime, allSta, exp from plant where id = %1").arg(kind));
     query.next();
     int growTime = query.value(0).toInt();
     int allSta = query.value(1).toInt();
+    int exp = query.value(2).toInt();
     if(cal_time.secsTo(QDateTime::currentDateTime()) < (qint64)growTime * allSta * 3600)
     {
         out << 1;
@@ -560,7 +575,18 @@ void Thread::sendHarvestResult(QDataStream &in)
     }
     else
         query.exec(QString("insert into store values(%1, %2, %3, %4)").arg(id).arg(kind).arg(yield).arg(Fruit));
-    out << 2 << kind << yield;
+    query.exec(QString("select level, exp from user where id = %1").arg(id));
+    query.next();
+    int currLevel = query.value(0).toInt();
+    int currExp = query.value(1).toInt();
+    currExp += exp;
+    while(currExp >= needExp[currLevel])
+    {
+        currExp -= needExp[currLevel];
+        currLevel++;
+    }
+    query.exec(QString("update user set level = %1, exp = %2 where id = %3").arg(currLevel).arg(currExp).arg(id));
+    out << 2 << number << kind << yield << exp;
     out.device()->seek(0);
     out << (qint64)outBlock.size();
     tcpServerConnection->write(outBlock);
@@ -572,6 +598,8 @@ void Thread::sendStatusChangeResult(QDataStream &in)
     QDataStream out(&outBlock, QIODevice::ReadWrite);
     out.setVersion(QDataStream::Qt_5_5);
     out << (qint64)0 << 8 << 0;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size() << 8;
     int number, _status;
     bool _auto;
     in >> number >> _status >> _auto;
@@ -607,10 +635,10 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             if(water.addSecs(duration) <= QDateTime::currentDateTime())
             {
                 yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
-                out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
+                out << 1 << number << _status << _auto << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(water) : (duration + (int)QDateTime::currentDateTime().secsTo(water)));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
@@ -630,12 +658,12 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             else
             {
                 water = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
-                out << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
+                out << 1 << number << _status << _auto << (water <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(water)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(water) : (duration + (int)QDateTime::currentDateTime().secsTo(water)));
                 query.exec(QString("update soil set yield = yield + 1, water = '%1' where id = %2 and number = %3")
                            .arg(water.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
@@ -649,10 +677,10 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             if(pyre.addSecs(duration) <= QDateTime::currentDateTime())
             {
                 yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
-                out << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
+                out << 1 << number << _status << _auto << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(pyre) : (duration + (int)QDateTime::currentDateTime().secsTo(pyre)));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
@@ -672,12 +700,12 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             else
             {
                 pyre = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
-                out << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
+                out << 1 << number << _status << _auto << (pyre <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(pyre)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(pyre) : (duration + (int)QDateTime::currentDateTime().secsTo(pyre)));
                 query.exec(QString("update soil set pyre = '%1' where id = %2 and number = %3")
                            .arg(pyre.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
@@ -691,10 +719,10 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             if(weed.addSecs(duration) <= QDateTime::currentDateTime())
             {
                 yieldChange(number, QDateTime::currentDateTime(), water, pyre, weed);
-                out << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
+                out << 1 << number << _status << _auto << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(weed) : (duration + (int)QDateTime::currentDateTime().secsTo(weed)));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
@@ -714,15 +742,51 @@ void Thread::sendStatusChangeResult(QDataStream &in)
             else
             {
                 weed = QDateTime::currentDateTime().addSecs(interval + rand()%randTime);
-                out << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
+                out << 1 << number << _status << _auto << (weed <= QDateTime::currentDateTime()) << (((int)QDateTime::currentDateTime().secsTo(weed)) > 0 ?
                                                                        (int)QDateTime::currentDateTime().secsTo(weed) : (duration + (int)QDateTime::currentDateTime().secsTo(weed)));
                 query.exec(QString("update soil set weed = '%1' where id = %2 and number = %3")
                            .arg(weed.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
                 out.device()->seek(0);
-                out << (qint64)outBlock.size() << 8 << 1;
+                out << (qint64)outBlock.size();
                 tcpServerConnection->write(outBlock);
                 return;
             }
+        }
+    }
+}
+
+void Thread::sendReclaResult(QDataStream &in)
+{
+    QByteArray outBlock;
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
+    out.setVersion(QDataStream::Qt_5_5);
+    out << (qint64)0 << 9 << 0;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size() << 9;
+    int number;
+    in >> number;
+    query.exec(QString("select is_recla from soil where id = %1 and number in(%2, %3) order by number").arg(id).arg(number).arg(number+1));
+    query.next();
+    if(query.value(0).toBool() == false || !query.next() || query.value(0).toBool() == true)
+        tcpServerConnection->write(outBlock);//当前土地不可开垦;
+    else
+    {
+        query.exec(QString("select money, level from user where id = %1").arg(id));
+        query.next();
+        if(query.value(0).toInt() < number || query.value(1).toInt() < number/3+1)
+        {
+            out << 1;
+            tcpServerConnection->write(outBlock);//当前条件不满足
+        }
+        else
+        {
+            int money = query.value(0).toInt() - number;
+            query.exec(QString("update soil set money = %1 where id = %2").arg(money).arg(id));
+            query.exec(QString("update soil set is_recla = 1 where id = %1 and number = %2").arg(id).arg(number+1));
+            out << 2 << money;
+            out.device()->seek(0);
+            out << (qint64)outBlock.size();
+            tcpServerConnection->write(outBlock);
         }
     }
 }
