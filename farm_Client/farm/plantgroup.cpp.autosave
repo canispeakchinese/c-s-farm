@@ -1,0 +1,135 @@
+#include "plantgroup.h"
+#include <QPainter>
+#include <QMouseEvent>
+#include <QMessageBox>
+#include <QDebug>
+
+Plant::Plant(Business business, Good good) : business(business), good(good)
+{
+}
+
+QRectF Plant::boundingRect() const//我猜是用来确定刷新区域的，但是不确定
+{
+    return QRectF(-40, -48, 80, 98);
+}
+
+void Plant::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+{
+    option = option;
+    widget = widget;
+    painter->drawPixmap(-30, -45, 60, 60, QPixmap(QString(":crops/image/crops/crop"
+        + QString::number(kind)+ QString("/seed.png"))));
+    painter->drawText(QRect(-20, 20, 40, 30), QString::number(num));
+    painter->drawRect(-40, -48, 80, 98);
+}
+
+QPainterPath Plant::shape() const//这个函数返回值确定的是这个item的作用范围，比如点击事件,碰撞检测
+{
+    QPainterPath path;
+    path.addRect(-40, -48, 80, 98);
+    return path;
+}
+
+bool Plant::sceneEvent(QEvent *event)
+{
+    if(event->type() == QEvent::GraphicsSceneMousePress)
+    {
+        mousePressEvent((QGraphicsSceneMouseEvent *)event);
+    }
+    else if(event->type() == QEvent::GraphicsSceneMouseRelease)
+    {
+        mouseReleaseEvent((QGraphicsSceneMouseEvent *)event);
+    }
+    else if(event->type() == QEvent::GraphicsSceneMouseMove)
+    {
+        mouseMoveEvent((QGraphicsSceneMouseEvent *)event);
+    }
+    else if(event->type() == QEvent::GraphicsSceneMouseDoubleClick)
+    {
+        mouseDoubleClickEvent((QGraphicsSceneMouseEvent *)event);
+    }
+    return QGraphicsObject::sceneEvent(event);
+}
+
+void Plant::mousePressEvent(QGraphicsSceneMouseEvent *event)
+{
+    BusinessDialog * businessdialog = new BusinessDialog(business, type, kind, num);
+    connect(businessdialog,SIGNAL(business_success(int,int)),this,SLOT(get_infor(int,int)));
+    businessdialog->exec();
+    QGraphicsObject::mousePressEvent(event);
+}
+
+void Plant::get_infor(int business_num)
+{
+    emit business_success(business, business_num, good);
+}
+
+Plant::~Plant()
+{
+}
+
+PlantGroup::PlantGroup(Business business, PlantType type, set<Good> good) : business(business),
+    type(type), good(good)
+{
+}
+
+void PlantGroup::createPlant()
+{
+    set<Good>::iterator it = good.begin();
+    for(int i=0; ; i++)
+    {
+        for(int j=0; j<4; j++)
+        {
+            if(it == good.end())
+                return;
+            Plant * plant = new Plant(business, type, it->kind, it->num);
+            emit send_plant(plant);
+            addToGroup(plant);
+            plant->setPos(j*100 + 70, i*100+70);
+            it++;
+        }
+    }
+}
+
+void PlantGroup::updatePlant(set<Good> newgood)
+{
+    good = newgood;
+    QList<QGraphicsItem *>list = childItems();
+    QGraphicsItem * temp;
+    foreach (temp, list)
+    {
+        removeFromGroup(temp);
+        temp->~QGraphicsItem();
+    }
+    createPlant();
+}
+
+QRectF PlantGroup::boundingRect() const//我猜是用来确定刷新区域的，但是不确定
+{
+    int num = good.size()/4;
+    if(good.size()%4)
+        num++;
+    return QRectF(0, 0, 430, num*100);
+}
+
+void PlantGroup::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+{
+    option = option;
+    widget = widget;
+    painter = painter;
+}
+
+QPainterPath PlantGroup::shape() const//这个函数返回值确定的是这个item的作用范围，比如点击事件,碰撞检测
+{
+    QPainterPath path;
+    int num = good.size()/4;
+    if(good.size()%4)
+        num++;
+    path.addRect(0, 0, 450, num*100);
+    return path;
+}
+
+PlantGroup::~PlantGroup()
+{
+
+}

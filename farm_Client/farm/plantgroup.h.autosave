@@ -1,0 +1,78 @@
+#ifndef PLANTGROUP_H
+#define PLANTGROUP_H
+
+#include "businessdialog.h"
+#include <QGraphicsObject>
+#include <set>
+
+using namespace std;
+
+class Good
+{
+public:
+    Good(){}
+    Good(int type, int kind, int num, int buyprice, int sellprice) : type(type), kind(kind), num(num),
+        buyprice(buyprice), sellprice(sellprice){}
+    Good(const Good &good) : type(good.type), kind(good.kind), num(good.num),
+        buyprice(good.buyprice), sellprice(good.sellprice){}
+    bool operator <(const Good &good) const
+    {
+        if(type == good.type)
+            return kind < good.kind;
+        return type < good.type;
+    }
+
+    int type;
+    int kind;
+    int num;
+    int buyprice;
+    int sellprice;
+};
+
+class Plant :public QGraphicsObject
+{
+    Q_OBJECT
+public:
+    explicit Plant(Business business, Good good);
+    virtual QRectF boundingRect() const;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
+    QPainterPath shape() const;
+    ~Plant();
+
+signals:
+    void business_success(Business business, int business_num, Good good);
+
+public slots:
+    void get_infor(int business_num);
+
+protected:
+    bool sceneEvent(QEvent *event);
+    void mousePressEvent(QGraphicsSceneMouseEvent *event);
+
+private:
+    Business business;
+    Good good;
+};
+
+class PlantGroup : public QObject , public QGraphicsItemGroup
+{
+    Q_OBJECT
+public:
+    explicit PlantGroup(Business business, PlantType type, set<Good> good);
+    void createPlant();
+    void updatePlant(set<Good> newgood);
+    virtual QRectF boundingRect() const;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
+    QPainterPath shape() const;
+    ~PlantGroup();
+
+signals:
+    void send_plant(Plant *);
+
+private:
+    Business business;
+    PlantType type;
+    set<Good> good;
+};
+
+#endif // PLANTGROUP_H
