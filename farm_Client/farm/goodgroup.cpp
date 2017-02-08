@@ -26,17 +26,19 @@ void GoodItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
     {
         if(good.type == Seed)
             painter->drawPixmap(-18, -18, 36, 36, QPixmap(QString("%1/seed.png").arg(good.address)));
+        else if(good.type == Fertilize)
+            painter->drawPixmap(-18, -18, 36, 36, QPixmap(good.address));
     }
     else
     {
         if(good.type == Seed || good.type == Fruit)
-        {
             painter->drawPixmap(-30, -45, 60, 60, QPixmap(QString("%1/seed.png").arg(good.address)));
-            if(business == Sell)
-                painter->drawText(QRect(-20, 20, 40, 30), Qt::AlignCenter, QString::number(good.num));
-            else painter->drawText(QRect(-20, 20, 40, 30), Qt::AlignCenter, good.name);
-            painter->drawRect(-40, -48, 80, 98);
-        }
+        else if(good.type == Fertilize)
+            painter->drawPixmap(-30, -45, 60, 60, QPixmap(good.address));
+        if(business == Sell)
+            painter->drawText(QRect(-20, 20, 40, 30), Qt::AlignCenter, QString::number(good.num));
+        else painter->drawText(QRect(-20, 20, 40, 30), Qt::AlignCenter, good.name);
+        painter->drawRect(-40, -48, 80, 98);
     }
     //QGraphicsObject::paint(painter, option, widget);
 }

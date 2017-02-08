@@ -17,7 +17,7 @@ Good createGood(GoodType type, int kind, int num)
     }
     else
     {
-        Good aim(goodDefin[Seed][kind]);
+        Good aim(goodDefin[type][kind]);
         aim.num = num;
         return aim;
     }
@@ -44,13 +44,13 @@ BusinessDialog::BusinessDialog(Business business, Good good, QWidget *parent) :
         confirm->setText("卖出");
         if(good.type == Fruit)
             price = good.sellPrice;
-        else if(good.type == Seed)
+        else if(good.type == Seed || good.type == Fertilize)
             price = good.buyPrice*0.8;
     }
     else
     {
         confirm->setText("买入");
-        if(good.type == Seed)
+        if(good.type == Seed || good.type == Fertilize)
             price = good.buyPrice;
     }
     cancel = new QPushButton("取消", this);
@@ -85,15 +85,14 @@ void BusinessDialog::paintEvent(QPaintEvent *event)
     painter->setFont(font);//添加字体
     QRectF ff(200,30,150,60);
     if(good.type == Seed || good.type == Fruit)
-    {
         painter->drawPixmap(50, 60, 100, 100, QPixmap(QString("%1/seed.png").arg(good.address)));
-        painter->drawText(ff,Qt::AlignCenter,good.name);
-        font.setPointSize(10);
-        painter->setFont(font);
-        painter->drawText(QRect(200, 110, 150, 20), Qt::AlignCenter, QString("单个价格:%1").arg(price));
-        painter->drawText(QRect(200, 180, 150, 20), Qt::AlignCenter, QString("交易金额:%1").arg(price*business_num->text().toInt()));
-    }
-
+    else
+        painter->drawPixmap(50, 60, 100, 100, QPixmap(good.address));
+    painter->drawText(ff,Qt::AlignCenter,good.name);
+    font.setPointSize(10);
+    painter->setFont(font);
+    painter->drawText(QRect(200, 110, 150, 20), Qt::AlignCenter, QString("单个价格:%1").arg(price));
+    painter->drawText(QRect(200, 180, 150, 20), Qt::AlignCenter, QString("交易金额:%1").arg(price*business_num->text().toInt()));
     painter->end();
     QDialog::paintEvent(event);
 }

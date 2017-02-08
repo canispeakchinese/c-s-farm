@@ -26,6 +26,7 @@ signals:
     void sendPlantRequest(int number);
     void sendSpadRequest(int number);
     void sendHarvestRequest(int number);
+    void sendFertilizeRequest(int number);
 
 public slots:
     void receiveStatus(ToolType type);
@@ -39,6 +40,7 @@ public slots:
     void harvestSuccess(int _num);
     void statusChangeSuccess(int _num, int changeStatus, bool _auto, QDataStream &in);
     void reclaSuccess();
+    void fertilizeSuccess(int _num, int reduTime);
 
 protected:
     bool sceneEvent(QEvent *event);

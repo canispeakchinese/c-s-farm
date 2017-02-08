@@ -26,7 +26,7 @@ public:
         if(type == Seed || type == Fruit)
             this->address = QString(":crops/image/crops/crop") + address;
         else if(type == Fertilize)
-            this->address = QString(":fertilize/") + address;
+            this->address = QString(":fertilize/image/fertilize/") + address + ".png";
     }
 
     Good(const Good &good) : name(good.name), address(good.address), type(good.type), kind(good.kind), buyPrice(good.buyPrice),
@@ -73,6 +73,12 @@ const Good goodDefin[111][111] = {
     },
     {
 
+    },
+    {
+        Good(QString("empty"), QString("empty"), Fertilize, 0, 0, 0, 0),
+        Good(QString("初级化肥"), QString("1"), Fertilize, 1, 10, 1, 10),
+        Good(QString("中极化肥"), QString("2"), Fertilize, 2, 20, 2, 20),
+        Good(QString("高级化肥"), QString("3"), Fertilize, 3, 30, 3, 30)
     }
 };
 

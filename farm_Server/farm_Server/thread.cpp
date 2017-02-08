@@ -86,6 +86,9 @@ void Thread::readyRead()
         case 9:
             sendReclaResult(in);
             break;
+        case 10:
+            sendFertilizeResult(in);
+            break;
         default:
             break;
         }
@@ -331,6 +334,12 @@ QByteArray Thread::getGoodResult(Business business)
             out << (int)Seed << query.value(0).toInt();
             goodNum++;
         }
+        query.exec("select id from fertilize");
+        while(query.next())
+        {
+            out << (int)Fertilize << query.value(0).toInt();
+            goodNum++;
+        }
     }
     else if(business == Sell)
     {
@@ -343,7 +352,7 @@ QByteArray Thread::getGoodResult(Business business)
     }
     else if(business == Use)
     {
-        query.exec(QString("select type, kind, num from store where id=%1 and type=%2").arg(id).arg(Seed));
+        query.exec(QString("select type, kind, num from store where id=%1 and type in(%2, %3)").arg(id).arg(Seed).arg(Fertilize));
         while(query.next())
         {
             out << query.value(0).toInt() << query.value(1).toInt() << query.value(2).toInt();
@@ -375,6 +384,12 @@ void Thread::sendBusinessResult(QDataStream &in)
         if(type == Seed)
         {
             query.prepare("select buyprice, buylevel from plant where id = ?");
+            query.addBindValue(kind);
+            query.exec();
+        }
+        else if(type == Fertilize)
+        {
+            query.prepare("select buyprice, buylevel from fertilize where id = ?");
             query.addBindValue(kind);
             query.exec();
         }
@@ -439,6 +454,12 @@ void Thread::sendBusinessResult(QDataStream &in)
             if(type == Seed)
             {
                 query.exec(QString("select buyprice from plant where id = %1").arg(kind));
+                query.next();
+                businessPrice = query.value(0).toInt() * 0.8;
+            }
+            else if(type == Fertilize)
+            {
+                query.exec(QString("select buyprice from fertilize where id = %1").arg(kind));
                 query.next();
                 businessPrice = query.value(0).toInt() * 0.8;
             }
@@ -789,6 +810,58 @@ void Thread::sendReclaResult(QDataStream &in)
             tcpServerConnection->write(outBlock);
         }
     }
+}
+
+void Thread::sendFertilizeResult(QDataStream &in)
+{
+    QByteArray outBlock;
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
+    out.setVersion(QDataStream::Qt_5_5);
+    out << (qint64)0 << 10 << 0;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size() << 10;
+    int number, kind;
+    in >> number >> kind;
+    query.exec(QString("select num from store where id=%1 and kind=%2 and type=2").arg(id).arg(kind));
+    if(!query.next())
+    {
+        tcpServerConnection->write(outBlock);        //化肥不足
+        return;
+    }
+    int num = query.value(0).toInt();
+    query.exec(QString("select is_recla, kind, cal_time from soil where id = %1 and number = %2").arg(id).arg(number));
+    if(!query.next() || query.value(0).toBool() == false || query.value(1).toInt() == 0)
+    {
+        out << 1;
+        tcpServerConnection->write(outBlock);        //土地信息错误
+        return;
+    }
+    int seedkind = query.value(1).toInt();
+    QDateTime cal_time = query.value(2).toDateTime();
+    query.exec(QString("select growTime,allSta from plant where id=%1").arg(seedkind));
+    query.next();
+    int growTime = query.value(0).toInt();
+    int allSta = query.value(1).toInt();
+    if(cal_time.addSecs(growTime * allSta * 3600) < QDateTime::currentDateTime())
+    {
+        out << 1;
+        tcpServerConnection->write(outBlock);        //土地信息错误
+        return;
+    }
+    query.exec(QString("select reduTime from fertilize where id = %1").arg(kind));
+    query.next();
+    int reduTime = query.value(0).toInt();
+    if(num == 1)
+        query.exec(QString("delete from store where id=%1 and kind=%2 and type=2").arg(id).arg(kind));
+    else
+        query.exec(QString("update store set num=num-1 where id=%1 and kind=%2 and type=2").arg(id).arg(kind));
+    cal_time = cal_time.addSecs(-reduTime);
+    query.exec(QString("update soil set cal_time='%1' where id=%2 and number=%3")
+               .arg(cal_time.toString("yyyy-MM-dd hh:mm:ss")).arg(id).arg(number));
+    out << 2 << number << reduTime;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size();
+    tcpServerConnection->write(outBlock);
 }
 
 void Thread::displayError()

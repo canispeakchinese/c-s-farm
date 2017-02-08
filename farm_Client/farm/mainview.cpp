@@ -188,6 +188,9 @@ void MainView::connectSoil(Soil *soil)
 
     connect(soil, SIGNAL(sendStatusChangeRequest(int,int,bool)), this, SLOT(sendStatusChangeRequest(int,int,bool)));
     connect(this, SIGNAL(statusChangeSuccess(int,int,bool,QDataStream&)), soil, SLOT(statusChangeSuccess(int,int,bool,QDataStream&)));
+
+    connect(soil, SIGNAL(sendFertilizeRequest(int)), this, SLOT(sendFertilizeRequest(int)));
+    connect(this, SIGNAL(fertilizeSuccess(int,int)), soil, SLOT(fertilizeSuccess(int,int)));
 }
 
 void MainView::connectTool(Tool *tool)
@@ -304,11 +307,16 @@ void MainView::sendBusinessRequest(Business _business, Good _good, int _business
         if(good.type == Seed)
         {
             toolType = Plant;
-            packgroup->hide();
             showstatus->setPixmap(QPixmap(QString("%1/seed.png").arg(good.address)));
-            showstatus->show();
-            emit sendStatus(toolType);
         }
+        else if(good.type == Fertilize)
+        {
+            toolType = Ferti;
+            showstatus->setPixmap(QPixmap(good.address));
+        }
+        packgroup->hide();
+        showstatus->show();
+        emit sendStatus(toolType);
     }
     else
     {
@@ -340,7 +348,7 @@ void MainView::getBusinessResult(QDataStream &in)
         }
         else if(business == Sell)
         {
-            if(good.type == Seed)
+            if(good.type == Seed || good.type == Fertilize)
                 showinforgroup->moneyChange(person->money + ((int)(good.buyPrice * 0.8)) * businessNum);
             else
                 showinforgroup->moneyChange(person->money + good.sellPrice * businessNum);
@@ -496,7 +504,7 @@ void MainView::getStatusChangeResult(QDataStream &in)
 
 void MainView::sendReclaRequest(int number)
 {
-    if(number > 18 || number < 1)
+    if(number > 17 || number < 0)
     {
         QMessageBox::warning(this, "数据有误", "请尝试重启更新数据以解决问题");
         return;
@@ -535,6 +543,46 @@ void MainView::getReclaResult(QDataStream &in)
         showinforgroup->moneyChange(money);
         emit moneyChange(money);
         emit reclaSuccess();
+    }
+}
+
+void MainView::sendFertilizeRequest(int number)
+{
+    if(number > 18 || number < 1)
+    {
+        QMessageBox::warning(this, "数据有误", "请尝试重启更新数据以解决问题");
+        return;
+    }
+    QByteArray outBlock;
+    QDataStream out(&outBlock, QIODevice::ReadWrite);
+    out.setVersion(QDataStream::Qt_5_5);
+    out << qint64(0) << 10 << id << password << number << good.kind;
+    out.device()->seek(0);
+    out << (qint64)outBlock.size();
+    tcpClient->write(outBlock);
+}
+
+void MainView::getFertilizeResult(QDataStream &in)
+{
+    int messageType;
+    in >> messageType;
+    if(messageType == 0)
+        QMessageBox::warning(this, "施肥失败", "化肥不足，请尝试重启更新数据");
+    else if(messageType == 1)
+        QMessageBox::warning(this, "施肥失败", "土地信息有误，请尝试重启");
+    else if(messageType == 2)
+    {
+        int number, reduTime;
+        in >> number >> reduTime;
+        emit fertilizeSuccess(number, reduTime);
+        good.num--;
+        emit goodChange(Use, good);
+        if(!good.num)
+        {
+            showstatus->hide();
+            toolType = Empty;
+            emit sendStatus(toolType);
+        }
     }
 }
 
@@ -582,6 +630,9 @@ void MainView::readyRead()
             break;
         case 9:
             getReclaResult(in);
+            break;
+        case 10:
+            getFertilizeResult(in);
         default:
             break;
         }

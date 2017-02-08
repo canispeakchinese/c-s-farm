@@ -11,6 +11,7 @@ WareHouse::WareHouse(Business business, int column, int level, QWidget *parent) 
 {
     goodgroup[0] = NULL;
     goodgroup[1] = NULL;
+    goodgroup[2] = NULL;
 }
 
 void WareHouse::createScene(GoodType type)
@@ -31,6 +32,8 @@ void WareHouse::createScene(GoodType type)
         tabwidget->addTab(view, QIcon(), "种子");
     else if(type == Fruit)
         tabwidget->addTab(view, QIcon(), "果实");
+    else if(type == Fertilize)
+        tabwidget->addTab(view, QIcon(), "化肥");
 }
 
 void WareHouse::business_failed()
@@ -49,6 +52,7 @@ void WareHouse::getGoods(QDataStream &in, Business business)
         return;
     goods[0].clear();
     goods[1].clear();
+    goods[2].clear();
     int goodNum, money;
     in >> goodNum;
     if(business == Buy)
@@ -69,15 +73,10 @@ void WareHouse::getGoods(QDataStream &in, Business business)
             goods[goodType].insert(createGood((GoodType)goodType, kind, num));
         }
     }
-    if(business == Buy)
-        createScene(Seed);
-    else if(business == Sell)
-    {
-        createScene(Seed);
+    createScene(Seed);
+    if(business == Sell)
         createScene(Fruit);
-    }
-    else
-        createScene(Seed);
+    createScene(Fertilize);
 }
 
 void WareHouse::levelChange(int _level)

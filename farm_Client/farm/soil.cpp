@@ -251,6 +251,16 @@ void Soil::reclaSuccess()
     update();
 }
 
+void Soil::fertilizeSuccess(int _num, int reduTime)
+{
+    if(num != _num)
+        return;
+    if(mature->remainingTime() < reduTime * 1000)
+        matureChange();
+    else
+        mature->start(mature->remainingTime() - reduTime * 1000);
+}
+
 void Soil::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
     if(status == Plant && need[Plant])
@@ -265,9 +275,9 @@ void Soil::mousePressEvent(QGraphicsSceneMouseEvent *event)
     else if(status == Harv && !need[Plant] && isRecla && isMature && !isHarvest)
         emit sendHarvestRequest(num);
     else if((status == Water || status == Pyre || status == Weed) && need[status])
-    {
         emit sendStatusChangeRequest((int)status, num, false);
-    }
+    else if(status == Ferti && isRecla && !need[Plant] && !isHarvest && !isMature)
+        emit sendFertilizeRequest(num);
     QGraphicsItem::mousePressEvent(event);
 }
 

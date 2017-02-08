@@ -31,8 +31,8 @@ protected:
     Business business;
     int column;   //展示物品的时候有多少列
     int level;
-    set<Good> goods[2];
-    GoodGroup * goodgroup[2];
+    set<Good> goods[3];
+    GoodGroup * goodgroup[3];
 
     QTabWidget * tabwidget;
 };

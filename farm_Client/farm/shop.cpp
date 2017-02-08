@@ -23,15 +23,20 @@ Shop::Shop(int level, QWidget *parent) :
 void Shop::moneyChange(int money)
 {
     Good good;
-    for(set<Good>::iterator it = goods[Seed].begin(); it!=goods[Seed].end();)
+    for(int i=0; i<3; i++)
     {
-        good = *it;
-        goods[Seed].erase(it);
-        good.num = money/good.buyPrice;
-        goods[Seed].insert(good);
-        it++;
+        if(i == Fruit)
+            continue;
+        for(set<Good>::iterator it = goods[i].begin(); it!=goods[i].end();)
+        {
+            good = *it;
+            goods[i].erase(it);
+            good.num = money/good.buyPrice;
+            goods[i].insert(good);
+            it++;
+        }
+        goodgroup[good.type]->updateGoodItem(goods[good.type]);
     }
-    goodgroup[good.type]->updateGoodItem(goods[Seed]);
 }
 
 Shop::~Shop()

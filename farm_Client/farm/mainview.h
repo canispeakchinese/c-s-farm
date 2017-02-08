@@ -56,6 +56,7 @@ public:
     void getHarvestResult(QDataStream &in);
     void getStatusChangeResult(QDataStream &in);
     void getReclaResult(QDataStream &in);
+    void getFertilizeResult(QDataStream &in);
     ~MainView();
 
 protected:
@@ -75,6 +76,7 @@ signals:
     void harvestSuccess(int number);
     void statusChangeSuccess(int number, int _status, bool _auto, QDataStream &in);
     void reclaSuccess();
+    void fertilizeSuccess(int number, int reduTime);
 
 public slots:
     void sendLoginRequest(QString _username, QString _password, bool isSignin);
@@ -92,6 +94,7 @@ public slots:
     void sendHarvestRequest(int _number);
     void sendStatusChangeRequest(int _status, int _number, bool _auto);//土地状态更新
     void sendReclaRequest(int number);
+    void sendFertilizeRequest(int number);
 
 private:
     QTcpSocket * tcpClient;

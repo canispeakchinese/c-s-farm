@@ -7,7 +7,7 @@
 class QTcpSocket;
 
 enum GoodType {
-    Seed, Fruit
+    Seed, Fruit, Fertilize
 };
 enum Business {
     Buy, Sell, Use//买,卖,使用
@@ -35,6 +35,7 @@ public:
     void sendHarvestResult(QDataStream &in);
     void sendStatusChangeResult(QDataStream &in);
     void sendReclaResult(QDataStream &in);
+    void sendFertilizeResult(QDataStream &in);
     ~Thread();
 
 protected:
