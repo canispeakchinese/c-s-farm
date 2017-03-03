@@ -2,7 +2,7 @@
 #define TOOL_H
 
 #include <QGraphicsObject>
-enum ToolType {Spad, Pack, Water, Pyre, Weed, Harv, Alhar, Kit, Plant, Ferti, Empty};
+enum ToolType {Spad, Pack, Water, Pyre, Weed, Harv, Alhar, Chat, Plant, Ferti, Empty};
 
 class Tool :public QGraphicsObject
 {

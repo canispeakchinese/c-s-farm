@@ -7,6 +7,7 @@
 #include "showinforgroup.h"
 #include "packgroup.h"
 #include "showscenegroup.h"
+#include "chatwidget.h"
 
 #include <QGraphicsScene>
 #include <QGraphicsItem>
@@ -18,6 +19,8 @@
 #include <QDebug>
 #include <QHostAddress>
 #include <QDataStream>
+#include <QTextBlockFormat>
+#include <QTextCursor>
 
 MainView::MainView(QGraphicsView *parent) : QGraphicsView(parent), tcpClient(new QTcpSocket), login(new Login())
 {
@@ -111,6 +114,8 @@ void MainView::initMainView()
     createInforGroup();
     createSceneGroup();
     createPackGroup();
+    createChatWidget();
+
     connect(this, SIGNAL(getFriend(QDataStream&)), showfriendgroup, SLOT(getFriend(QDataStream&)));
     connect(this, SIGNAL(getSoils(QDataStream&)), soilgroup, SLOT(getSoils(QDataStream&)));
     show();
@@ -173,6 +178,14 @@ void MainView::createPackGroup()
     packgroup->hide();
 }
 
+void MainView::createChatWidget()
+{
+    chatWidget = new ChatWidget(username, password);
+    chatWidget->setParent(this);
+    chatWidget->setGeometry(150, 50, 700, 550);
+    chatWidget->hide();
+}
+
 void MainView::connectSoil(Soil *soil)
 {
     connect(this,SIGNAL(sendStatus(ToolType)),soil,SLOT(receiveStatus(ToolType)));
@@ -218,6 +231,8 @@ void MainView::receiveStatus(ToolType newtype)
 {
     if(newtype == Pack)
         packgroup->show();
+    else if(newtype == Chat)
+        chatWidget->show();
     else
     {
         toolType = newtype;
@@ -247,6 +262,7 @@ void MainView::mousePressEvent(QMouseEvent *event)
 void MainView::connectError()
 {
     QMessageBox::warning(this, "连接网络失败", tcpClient->errorString());
+    exit(0);
     tcpClient->abort();
     tcpClient->connectToHost(QHostAddress("127.0.0.1"), 6666);
 }
@@ -633,6 +649,7 @@ void MainView::readyRead()
             break;
         case 10:
             getFertilizeResult(in);
+            break;
         default:
             break;
         }

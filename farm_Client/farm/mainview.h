@@ -34,6 +34,7 @@ class Good;
 class QTcpSocket;
 class Login;
 class QTimer;
+class ChatWidget;
 
 class MainView : public QGraphicsView
 {
@@ -49,6 +50,7 @@ public:
     void createInforGroup();
     void createSceneGroup();
     void createPackGroup();
+    void createChatWidget();
     void getUpdateResult(QDataStream &in);
     void getBusinessResult(QDataStream &in);
     void getPlantResult(QDataStream &in);
@@ -114,11 +116,12 @@ private:
     ShowInforGroup * showinforgroup;       //个人信息
     ShowSceneGroup * showscenegroup;       //商店等窗口
     PackGroup * packgroup;                 //背包
+    ChatWidget * chatWidget;               //聊天界面
 
     ToolType toolType;
     qint64 totalBytes;
     QByteArray inBlock;
-    int messageType;                       //消息的类型
+    int messageType;                         //消息的类型
     //int updateRequest;                     //更新的范围
     //int number;                            //当前操作的土地
     //bool isAuto;                           //当前操作是否是自动执行的

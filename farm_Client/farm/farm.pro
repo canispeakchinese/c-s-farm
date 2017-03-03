@@ -29,7 +29,8 @@ SOURCES += main.cpp \
     packgroup.cpp \
     warehouse.cpp \
     login.cpp \
-    mainview.cpp
+    mainview.cpp \
+    chatwidget.cpp
 
 HEADERS  += \
     mainview.h \
@@ -47,7 +48,8 @@ HEADERS  += \
     shop.h \
     packgroup.h \
     warehouse.h \
-    login.h
+    login.h \
+    chatwidget.h
 
 RESOURCES += \
     image.qrc

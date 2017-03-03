@@ -4,8 +4,6 @@
 
 #include <QGraphicsView>
 
-class QPushButton;
-
 class BaseScene : public QGraphicsView
 {
     Q_OBJECT
@@ -16,9 +14,6 @@ public:
 signals:
 
 public slots:
-
-private:
-    QPushButton * closeButton;
 };
 
 #endif // BASESCENE_H
