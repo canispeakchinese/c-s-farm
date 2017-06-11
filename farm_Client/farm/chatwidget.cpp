@@ -5,6 +5,9 @@
 #include <QDateTime>
 #include <QDebug>
 
+#define MAXINFORLEN 50
+#define MAXMESSLEN 150
+
 ChatWidget::ChatWidget(QString username, QString password) : tcpSocket(new QTcpSocket),
     username(username), password(password), showMess(new QTextEdit(this)), inputMess(new QLineEdit(this)),
     sendMess(new QPushButton("发送", this)), closeButton(new QPushButton("关闭", this))
@@ -42,11 +45,21 @@ void ChatWidget::tryLogin()
 
 void ChatWidget::sendMessage()
 {
+    if(inputMess->text().isEmpty())
+    {
+        QMessageBox::warning(this, "发送失败", "发送内容不能为空");
+        return;
+    }
     QByteArray outBlock;
     QDataStream out(&outBlock, QIODevice::ReadWrite);
-    out << (qint64)0 << NEWMESSAGE << inputMess->text() << QDateTime::currentDateTime();
+    out << (qint64)0 << NEWMESSAGE << inputMess->text();
     out.device()->seek(0);
     out << (qint64)outBlock.size();
+    if(outBlock.size() > MAXMESSLEN)
+    {
+        QMessageBox::warning(this, "发送失败", "发送内容过长");
+        return;
+    }
     tcpSocket->write(outBlock);
     inputMess->clear();
 }
@@ -105,7 +118,7 @@ void ChatWidget::newMessageComing(QDataStream &in)
 {
     QDateTime time;
     QString name, mess;
-    in >> name >> mess >> time;
+    in >> name >> time >> mess;
     publicMess+=QString("%1 %2:%3\n").arg(time.toString("yyyy-MM-dd hh:mm:ss")).arg(name).arg(mess);
     showMess->setPlainText(publicMess);
 }
@@ -127,7 +140,10 @@ void ChatWidget::loginResultComing(QDataStream &in)
 
 void ChatWidget::newChatComing(QDataStream &in)
 {
-
+    QString newMessage, username;
+    QDateTime time;
+    in >> newMessage >> username >> time;
+    showMess->append(time.toString() + " " + username + ":" + newMessage);
 }
 
 ChatWidget::~ChatWidget()

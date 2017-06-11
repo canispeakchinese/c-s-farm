@@ -1,77 +1,12 @@
 #include "deelinforprocess.h"
+#include "useful.h"
 #include <QDataStream>
+#include <QDateTime>
 #include <QDebug>
 
 #define MAXINFORLEN 50
 #define MAXMESSLEN 150
 #define HEADLEN (sizeof(long long) + sizeof(int))
-
-int errcont(const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    return 1;
-}
-
-int errexit(const char *format, ...)
-{
-    va_list	args;
-
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    exit(1);
-}
-
-int readn(int fd, void *buf, int num)
-{
-	int res;
-	int n;
-	char *ptr;
-	n = num;
-	ptr = (char *)buf;
-	while(n > 0)
-	{
-		if((res = read(fd, ptr, n)) == -1)
-		{
-			if(errno == EINTR)
-				res = 0;
-			else 
-				return (-1);
-		}
-		else if(res == 0)
-			return (-1);
-		ptr += res;
-		n -= res;
-	}
-	return 0;
-}
-
-int writen(int fd, void *buf, int num)
-{
-    int res;
-    int n;
-    char *ptr;
-    n = num;
-    ptr = (char *)buf;
-    while(n > 0)
-    {
-        if((res = write(fd, ptr, n)) == -1)
-        {
-            if(errno == EINTR)
-                res = 0;
-            else
-                return (-1);
-        }
-        else if(res == 0)
-            return (-1);
-        ptr += res;
-        n -= res;
-    }
-    return 0;
-}
 
 DeelInforProcess::DeelInforProcess(int server_sockfd) :
     server_sockfd(server_sockfd)
@@ -187,7 +122,7 @@ int DeelInforProcess::newMessComing(int client_sockfd, long long &length)
     QByteArray outBlock;
     QDataStream out(&outBlock, QIODevice::ReadWrite);
     QString username = mp[client_sockfd];
-    out << (qint64)(0) << newMessage << username;
+    out << (qint64)(0) << newMessage << username << QDateTime::currentDateTime();
     out.device()->seek(0);
     out << (qint64)(outBlock.size()+inBlock.size());
     outBlock.append(inBlock);
