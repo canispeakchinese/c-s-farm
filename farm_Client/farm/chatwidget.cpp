@@ -79,8 +79,6 @@ void ChatWidget::connectError()
 
 void ChatWidget::readyRead()
 {
-    if(!tcpSocket->bytesAvailable())
-        return;
     inBlock.append(tcpSocket->readAll());
     if(totalBytes == 0 && inBlock.size() >= (int)(sizeof(qint64) + sizeof(int)))
     {
