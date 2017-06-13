@@ -4,22 +4,19 @@
 #
 #-------------------------------------------------
 
-QT       += core gui
-
-QT       += network
 QT       += sql
 
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+LIBS += -L/usr/lib/ -lmuduo_base_cpp11
+LIBS += -L/usr/lib/ -lmuduo_net_cpp11
 
 TARGET = farm_Server
 TEMPLATE = app
 
+CONFIG += console c++11
 
 SOURCES += main.cpp \
-    farm_server.cpp \
-    thread.cpp
+    farm_server.cpp
 
 HEADERS  += \
     connect_mysql.h \
-    farm_server.h \
-    thread.h
+    farm_server.h

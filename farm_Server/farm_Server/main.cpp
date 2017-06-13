@@ -1,17 +1,22 @@
-#include <QApplication>
-#include <QMessageBox>
 #include "connect_mysql.h"
 #include "farm_server.h"
 
-int main(int argc, char *argv[])
+#include <muduo/base/Logging.h>
+#include <muduo/net/EventLoop.h>
+
+int main()
 {
-    QApplication a(argc, argv);
-    if(connect_mysql() == false)
-    {
-        QMessageBox *messagebox = new QMessageBox(QMessageBox::Warning,"错误","加载数据失败，请检查网络状态后重启!");
-        messagebox->exec();
-        exit(0);
-    }
-    farm_Server farm_server;
-    return a.exec();
+    if(!connect_mysql())
+        LOG_FATAL << "Connect to mysql database failed";
+    LOG_INFO << "Connect to mysql database successful";
+
+    EventLoop loop;
+    InetAddress serverAddr("127.0.0.1", 6666);
+
+    FarmServer server(&loop, serverAddr);
+    server.start();
+
+    loop.loop();
+    return 0;
 }
+
